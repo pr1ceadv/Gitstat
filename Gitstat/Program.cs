@@ -41,16 +41,32 @@ class Program
     {
         BaseAddress = new Uri("https://api.github.com/"),
     };
-    
 
-    static async Task<string> GetData(HttpClient client)
+    static public (string owner, string repo) ParseArgs(string[] args)
+    {
+        if (args.Length != 1)
+            throw new ArgumentException("Usage: gitstat <owner>/<repo>");
+
+        string[] parts = args[0].Split('/');
+        
+        if (parts.Length != 2 || 
+            string.IsNullOrWhiteSpace(parts[0]) || 
+            string.IsNullOrWhiteSpace(parts[1]))
+        {
+            throw new ArgumentException("Repository must be in format <owner>/<repo>");
+        }
+        
+        return (parts[0], parts[1]);
+    }
+    
+    static async Task<string> GetData(HttpClient client, string[] args)
     {
         string jsonResponse = "";
-        
         try
         {   
+            var (owner, repo) = ParseArgs(args);
             string BaseUrl = client.BaseAddress.ToString();
-            string url = $"{BaseUrl}repos/dotnet/runtime/commits";
+            string url = $"{BaseUrl}repos/{owner}/{repo}/commits";
             HttpResponseMessage response = await client.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
@@ -66,9 +82,11 @@ class Program
     
     static async Task Main(string[] args)
     {   
+        
+        
         _sharedClient.DefaultRequestHeaders.Add("User-Agent", "dotnet");
         
-        var jsonResponse = await GetData(_sharedClient);
+        var jsonResponse = await GetData(_sharedClient, args);
 
         var options = new JsonSerializerOptions
         {
