@@ -59,14 +59,13 @@ class Program
         return (parts[0], parts[1]);
     }
     
-    static async Task<string> GetData(HttpClient client, string[] args)
+    static async Task<string> GetRepositoryData(HttpClient client, string owner, string repo)
     {
         string jsonResponse = "";
         try
         {   
-            var (owner, repo) = ParseArgs(args);
             string BaseUrl = client.BaseAddress.ToString();
-            string url = $"{BaseUrl}repos/{owner}/{repo}/commits";
+            string url = $"repos/{owner}/{repo}/commits";
             HttpResponseMessage response = await client.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
@@ -83,10 +82,9 @@ class Program
     static async Task Main(string[] args)
     {   
         
-        
         _sharedClient.DefaultRequestHeaders.Add("User-Agent", "dotnet");
-        
-        var jsonResponse = await GetData(_sharedClient, args);
+        var (owner,  repo) = ParseArgs(args);
+        var jsonResponse = await GetRepositoryData(_sharedClient, owner, repo );
 
         var options = new JsonSerializerOptions
         {
