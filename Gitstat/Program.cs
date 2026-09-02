@@ -5,11 +5,11 @@ using System.Text.Json;
 
 
 public record Author(string Login);
-public record CommitAuthor(string Name, string Email, string Date);
+public record CommitAuthor(string Name, string Email, DateTimeOffset Date);
 public record Commit(CommitAuthor Author, string Message);
 public record Data(string Sha, Author Author, Commit Commit);
 
-public record Repository(string Owner, string Repo);
+public record Repository(string Owner, string Name);
 
 class Program
 {   
@@ -19,7 +19,7 @@ class Program
     };
 
     static public Repository ParseArgs(string[] args)
-    {   
+    {
         if (args.Length != 1)
             throw new ArgumentException("Usage: gitstat <owner>/<repo>");
 
@@ -36,41 +36,44 @@ class Program
         
         return rep;
     }
-    
-    static async Task<string> GetRepositoryData(HttpClient client, Repository rep)
-    {
-        string jsonResponse = "";
-        try
-        {   
-            string owner = rep.Owner;
-            string repo = rep.Repo;
-            string url = $"repos/{owner}/{repo}/commits";
-            HttpResponseMessage response = await client.GetAsync(url);
-            response.EnsureSuccessStatusCode();
 
-            jsonResponse = await response.Content.ReadAsStringAsync();
-            
-        }
-        catch (HttpRequestException e)
+    static Data[] DeserealizeData(string json)
+    {
+        var options = new JsonSerializerOptions
         {
-            Console.WriteLine($"{e.Message}");
-        }
+            PropertyNameCaseInsensitive = true,
+        };
+        Data[]? data = JsonSerializer.Deserialize<Data[]>(json, options);
+        if (data is null) throw  new NullReferenceException("Repository not found");
+        
+        return data;
+    }
+
+    static async Task<string> FetchRawData(HttpClient client, string url)
+    {
+        HttpResponseMessage response = await client.GetAsync(url);
+        response.EnsureSuccessStatusCode();
+        string? jsonResponse = await response.Content.ReadAsStringAsync();
+        
         return jsonResponse;
+    }
+    
+    static async Task<Data[]> GetRepositoryData(HttpClient client, Repository rep)
+    {   
+        string url = $"repos/{rep.Owner}/{rep.Name}/commits";
+        string? rawJson = await FetchRawData(client, url);
+        Data[]? data = DeserealizeData(rawJson);
+        return data;
     }
     
     static async Task Main(string[] args)
     {   
         
         _sharedClient.DefaultRequestHeaders.Add("User-Agent", "dotnet");
-        var rep = ParseArgs(args);
-        var jsonResponse = await GetRepositoryData(_sharedClient, rep);
-
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-        };
+      
+        Repository? rep = ParseArgs(args);
+        Data[]? data = await GetRepositoryData(_sharedClient, rep);
         
-        Data[]? data = JsonSerializer.Deserialize<Data[]>(jsonResponse, options);
         Console.WriteLine(data.Length);
     }
 }
