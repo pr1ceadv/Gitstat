@@ -4,37 +4,13 @@ using System.Threading.Tasks;
 using System.Text.Json;
 
 
-public class Author
-{   
-    
-    public string login { get; set; }
-   
-}
-public class CommitAuthor
-{
-    public string name { get; set; }
-    public string email { get; set; }
-    public string  date { get; set; }
-}
+public record Author(string Login);
+public record CommitAuthor(string Name, string Email, string Date);
+public record Commit(CommitAuthor Author, string Message);
+public record Data(string Sha, Author Author, Commit Commit);
 
-public class Commit
-{
-    public CommitAuthor  author { get; set; }
-    public string  message { get; set; }
-    
-}
+public record Repository(string Owner, string Repo);
 
-public class Data
-{
-    public string Sha { get; set; }
-    public Commit commit { get; set; }
-    public Author author { get; set; }
-    
-    public override string ToString()
-    {
-        return $"Sha: {Sha}\nAuthor: {author?.login}";
-    }
-}
 class Program
 {   
     private static HttpClient _sharedClient = new()
@@ -42,8 +18,8 @@ class Program
         BaseAddress = new Uri("https://api.github.com/"),
     };
 
-    static public (string owner, string repo) ParseArgs(string[] args)
-    {
+    static public Repository ParseArgs(string[] args)
+    {   
         if (args.Length != 1)
             throw new ArgumentException("Usage: gitstat <owner>/<repo>");
 
@@ -56,15 +32,18 @@ class Program
             throw new ArgumentException("Repository must be in format <owner>/<repo>");
         }
         
-        return (parts[0], parts[1]);
+        Repository rep = new(parts[0], parts[1]);
+        
+        return rep;
     }
     
-    static async Task<string> GetRepositoryData(HttpClient client, string owner, string repo)
+    static async Task<string> GetRepositoryData(HttpClient client, Repository rep)
     {
         string jsonResponse = "";
         try
         {   
-            string BaseUrl = client.BaseAddress.ToString();
+            string owner = rep.Owner;
+            string repo = rep.Repo;
             string url = $"repos/{owner}/{repo}/commits";
             HttpResponseMessage response = await client.GetAsync(url);
             response.EnsureSuccessStatusCode();
@@ -83,8 +62,8 @@ class Program
     {   
         
         _sharedClient.DefaultRequestHeaders.Add("User-Agent", "dotnet");
-        var (owner,  repo) = ParseArgs(args);
-        var jsonResponse = await GetRepositoryData(_sharedClient, owner, repo );
+        var rep = ParseArgs(args);
+        var jsonResponse = await GetRepositoryData(_sharedClient, rep);
 
         var options = new JsonSerializerOptions
         {
