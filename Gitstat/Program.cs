@@ -37,6 +37,10 @@ class Program
         return rep;
     }
 
+    static async Task<bool> RepositoryExists(HttpResponseMessage response)
+    {
+        return response.IsSuccessStatusCode;
+    }
     static Data[] DeserealizeData(string json)
     {
         var options = new JsonSerializerOptions
@@ -52,9 +56,11 @@ class Program
     static async Task<string> FetchRawData(HttpClient client, string url)
     {
         HttpResponseMessage response = await client.GetAsync(url);
-        response.EnsureSuccessStatusCode();
-        string? jsonResponse = await response.Content.ReadAsStringAsync();
         
+        if (!await RepositoryExists(response)) throw  new Exception("Repository not found");
+        response.EnsureSuccessStatusCode();
+        
+        string? jsonResponse = await response.Content.ReadAsStringAsync();
         return jsonResponse;
     }
     
