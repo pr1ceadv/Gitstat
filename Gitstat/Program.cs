@@ -2,23 +2,30 @@
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+
 
 
 public record Author(string Login);
 public record CommitAuthor(string Name, string Email, DateTimeOffset Date);
-public record Commit(CommitAuthor Author, string Message);
-public record Data(string Sha, Author Author, Commit Commit);
+public record CommitData(CommitAuthor Author, string Message);
+public record Commit(string Sha, Author Author, [property: JsonPropertyName("commit")] CommitData CommitData);
 
 public record Repository(string Owner, string Name);
 
 class Program
 {   
+    public static readonly JsonSerializerOptions jsonSerializerOptions = new JsonSerializerOptions
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+    
     private static HttpClient _sharedClient = new()
     {
         BaseAddress = new Uri("https://api.github.com/"),
     };
 
-    static public Repository ParseArgs(string[] args)
+    public static Repository ParseArgs(string[] args)
     {
         if (args.Length != 1)
             throw new ArgumentException("Usage: gitstat <owner>/<repo>");
@@ -41,16 +48,14 @@ class Program
     {
         return response.IsSuccessStatusCode;
     }
-    static Data[] DeserealizeData(string json)
+    static Commit[] DeserializeData(string json)
     {
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-        };
-        Data[]? data = JsonSerializer.Deserialize<Data[]>(json, options);
-        if (data is null) throw  new NullReferenceException("Repository not found");
+        var options = jsonSerializerOptions;
+       
+        Commit[]? commits = JsonSerializer.Deserialize<Commit[]>(json, options);
+        if (commits is null) throw  new InvalidOperationException("Repository not found");
         
-        return data;
+        return commits;
     }
 
     static async Task<string> FetchRawData(HttpClient client, string url)
@@ -64,22 +69,47 @@ class Program
         return jsonResponse;
     }
     
-    static async Task<Data[]> GetRepositoryData(HttpClient client, Repository rep)
+    static async Task<List<Commit>> GetRepositoryData(HttpClient client, Repository rep)
     {   
         string url = $"repos/{rep.Owner}/{rep.Name}/commits";
-        string? rawJson = await FetchRawData(client, url);
-        Data[]? data = DeserealizeData(rawJson);
-        return data;
+        List<Commit> commits = new();
+
+        int pageCount = 1;
+        int maxPerPage = 100;
+        
+        Commit[]? page;
+        do
+        {
+            string pagedUrl = $"{url}?per_page={maxPerPage}&page={pageCount}";
+            string? rawJson = await FetchRawData(client, pagedUrl);
+            page = DeserializeData(rawJson);
+            
+            if (page == null || page.Length == 0)
+                break;
+            
+            commits.AddRange(page);
+            pageCount++;
+        } while (page.Length == maxPerPage);
+        
+        
+        return  commits;
     }
     
     static async Task Main(string[] args)
     {   
         
         _sharedClient.DefaultRequestHeaders.Add("User-Agent", "dotnet");
-      
-        Repository? rep = ParseArgs(args);
-        Data[]? data = await GetRepositoryData(_sharedClient, rep);
+        try
+        {
+            Repository? rep = ParseArgs(args);
+            List<Commit>? commits = await GetRepositoryData(_sharedClient, rep);
+
+            Console.WriteLine(commits.Count);
+        }
+        catch(Exception e)
+        {
+           Console.WriteLine(e.Message);
+        }
         
-        Console.WriteLine(data.Length);
     }
 }
